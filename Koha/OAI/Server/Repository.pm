@@ -172,9 +172,10 @@ sub get_biblio_marcxml {
         $with_items = $conf->{format}->{$format}->{include_items};
     }
     my $record = GetMarcBiblio({
-        biblionumber => $biblionumber,
-        embed_items  => $with_items,
-        opac         => 1 });
+        biblionumber            => $biblionumber,
+        embed_items             => $with_items,
+        embed_seefromheading    => 1,
+        opac                    => 1 });
     $record ? $record->as_xml_record() : undef;
 }
 
