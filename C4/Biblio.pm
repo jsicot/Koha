@@ -1136,7 +1136,7 @@ biblionumber doesn't exist.
 
 embed_seefromheading, embed_items and opac are optional.
 If embed_items is passed and is 1, items are embedded.
-If embed_seefromheading is passed and is 1, see-from heading are embedded.
+If embed_seefromheading is passed and is 1, see-from headings are embedded.
 If opac is passed and is 1, the record is filtered as needed.
 
 =over 4
@@ -2609,7 +2609,7 @@ sub EmbedItemsInMarcBiblio {
 
 =head2 EmbedSeeFromHeadings
 
-    EmbedItemsInMarcBiblio({
+    EmbedSeeFromHeadings({
         marc_record  => $record });
 
 Given a MARC::Record object containing a bib record,
