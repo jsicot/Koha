@@ -98,6 +98,7 @@ use Koha::Caches;
 use Koha::Authority::Types;
 use Koha::Acquisition::Currencies;
 use Koha::Biblio::Metadatas;
+use Koha::MetadataRecord::Authority;
 use Koha::Holds;
 use Koha::ItemTypes;
 use Koha::Plugins;
@@ -1126,14 +1127,16 @@ sub GetMarcSubfieldStructureFromKohaField {
   my $record = GetMarcBiblio({
       biblionumber => $biblionumber,
       embed_items  => $embeditems,
+      embed_seefromheading  => $embedseefromheading,
       opac         => $opac,
       borcat       => $patron_category });
 
 Returns MARC::Record representing a biblio record, or C<undef> if the
 biblionumber doesn't exist.
 
-Both embed_items and opac are optional.
+embed_seefromheading, embed_items and opac are optional.
 If embed_items is passed and is 1, items are embedded.
+If embed_seefromheading is passed and is 1, see-from heading are embedded.
 If opac is passed and is 1, the record is filtered as needed.
 
 =over 4
@@ -1169,10 +1172,11 @@ sub GetMarcBiblio {
         return;
     }
 
-    my $biblionumber = $params->{biblionumber};
-    my $embeditems   = $params->{embed_items} || 0;
-    my $opac         = $params->{opac} || 0;
-    my $borcat       = $params->{borcat} // q{};
+    my $biblionumber 		 = $params->{biblionumber};
+    my $embeditems  		 = $params->{embed_items} || 0;
+    my $embedseefromheading  = $params->{embed_seefromheading} || 0;
+    my $opac         		 = $params->{opac} || 0;
+    my $borcat       		 = $params->{borcat} // q{};
 
     if (not defined $biblionumber) {
         carp 'GetMarcBiblio called with undefined biblionumber';
@@ -1206,6 +1210,9 @@ sub GetMarcBiblio {
             opac         => $opac,
             borcat       => $borcat })
           if ($embeditems);
+        C4::Biblio::EmbedSeeFromHeadings({
+            marc_record  => $record })
+          if ($embedseefromheading && C4::Context->preference('IncludeSeeFromInSearches'));
 
         return $record;
     }
@@ -2598,6 +2605,53 @@ sub EmbedItemsInMarcBiblio {
         push @item_fields, $item_marc->field($itemtag);
     }
     $marc->append_fields(@item_fields);
+}
+
+=head2 EmbedSeeFromHeadings
+
+    EmbedItemsInMarcBiblio({
+        marc_record  => $record });
+
+Given a MARC::Record object containing a bib record,
+modify it to include see-from headings.
+
+=cut
+
+sub EmbedSeeFromHeadings {
+    my ($params) = @_;
+    my $record = $params->{marc_record};
+
+    my ($item_tag) = GetMarcFromKohaField("items.itemnumber", '');
+    $item_tag ||= '';
+
+    foreach my $field ( $record->fields() ) {
+        next if $field->is_control_field();
+        next if $field->tag() eq $item_tag;
+        my $authid = $field->subfield('9');
+
+        next unless $authid;
+
+        my $authority = Koha::MetadataRecord::Authority->get_from_authid($authid);
+        next unless $authority;
+        my $auth_marc = $authority->record;
+        my @seefrom = $auth_marc->field('4..');
+        my @newfields;
+        foreach my $authfield (@seefrom) {
+            my $tag = substr($field->tag(), 0, 1) . substr($authfield->tag(), 1, 2);
+            next if MARC::Field->is_controlfield_tag($tag);
+            my $newfield = MARC::Field->new($tag,
+                    'z',
+                    $authfield->indicator(2) || ' ',
+                    '9' => '1');
+            foreach my $sub ($authfield->subfields()) {
+                my ($code,$val) = @$sub;
+                $newfield->add_subfields( $code => $val );
+            }
+            $newfield->delete_subfield( code => '9' );
+            push @newfields, $newfield if (scalar($newfield->subfields()) > 0);
+        }
+        $record->append_fields(@newfields);
+    }
 }
 
 =head1 INTERNAL FUNCTIONS
